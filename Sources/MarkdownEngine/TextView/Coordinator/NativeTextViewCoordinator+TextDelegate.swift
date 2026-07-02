@@ -515,6 +515,9 @@ extension NativeTextViewCoordinator {
     }
 
     public func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+        // Record that the delegate ran this press, so mouseDown's fallback knows
+        // AppKit didn't drop the dispatch.
+        (textView as? NativeTextView)?.linkClickDidFire = true
         // Edit zone: a click on the outer ~30% of a link's first/last visible char places the caret
         // just outside the markers (before '[[' / '[' , after ']]' / ')') to reveal the source for
         // editing instead of navigating. Applies to both wiki links [[…]] and web links [text](url).
@@ -547,9 +550,14 @@ extension NativeTextViewCoordinator {
             }
         }
         guard let target = WikiLinkService.resolveIdentifier(link: link, textView: textView, at: charIndex) else {
+            // Web link (URL-valued): returning false lets AppKit open the URL
+            // (the mouseDown fallback mirrors that). Opening a link is navigation
+            // too — flag it so mouseDown restores the pre-click caret.
+            (textView as? NativeTextView)?.linkClickDidNavigate = true
             return false
         }
         // Direkt deaktivieren, bevor der Navigation-Callback läuft.
+        (textView as? NativeTextView)?.linkClickDidNavigate = true
         self.isWikiLinkActive = false
         DispatchQueue.main.async {
             self.onLinkClick?(target)
