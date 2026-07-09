@@ -180,6 +180,115 @@ struct MarkdownASTStylerTests {
     }
 }
 
+/// A hidden task item shares the BULLET list's left geometry (GitHub/Obsidian):
+/// the `[ ] ` chars collapse to the hidden-marker font (~zero advance) so task
+/// content starts at the same x as bullet content, and the hanging indent
+/// measures only `- `. While the caret edits the syntax, the raw chars show at
+/// full advance and the indent uses the full `- [ ] ` width.
+@Suite("Task checkbox geometry — collapsed [ ] shares bullet indent")
+struct TaskCheckboxGeometryStylerTests {
+
+    private let base: CGFloat = 14
+    private var fontName: String { NSFont.systemFont(ofSize: 14).fontName }
+    private var baseFont: NSFont { NSFont(name: fontName, size: base) ?? .systemFont(ofSize: base) }
+    private var hiddenSize: CGFloat { MarkdownEditorConfiguration.default.markers.hiddenMarkerFontSize }
+    private var indentPerLevel: CGFloat { MarkdownEditorConfiguration.default.lists.indentPerLevel }
+
+    /// Same measurement call the styler uses for the hanging indent.
+    private func width(_ s: String) -> CGFloat {
+        (s as NSString).size(withAttributes: [.font: baseFont]).width
+    }
+
+    /// Effective font at `pos`: the last styled range covering it that sets `.font`.
+    private func font(in attrs: [StyledRange], at pos: Int) -> NSFont? {
+        var result: NSFont?
+        for (range, a) in attrs where NSLocationInRange(pos, range) {
+            if let f = a[.font] as? NSFont { result = f }
+        }
+        return result
+    }
+
+    /// Effective headIndent at `pos`: the last styled range covering it that sets `.paragraphStyle`.
+    private func headIndent(in attrs: [StyledRange], at pos: Int) -> CGFloat? {
+        var result: CGFloat?
+        for (range, a) in attrs where NSLocationInRange(pos, range) {
+            if let ps = a[.paragraphStyle] as? NSParagraphStyle { result = ps.headIndent }
+        }
+        return result
+    }
+
+    private func style(_ text: String, caret: Int = -1) -> [StyledRange] {
+        MarkdownASTStyler.styleAttributes(text: text, fontName: fontName, fontSize: base, caretLocation: caret)
+    }
+
+    @Test("hidden task: [ ] collapses to the hidden font and indent equals a bullet's")
+    func hiddenTaskSharesBulletIndent() {
+        // "- [ ] task": marker 0..1, spacer 1..2, box 2..5, gap 5..6, content 6...
+        let attrs = style("- [ ] task")
+
+        // The box chars carry the collapse font (~zero advance, house pattern).
+        for pos in 2...4 {
+            #expect(font(in: attrs, at: pos)?.pointSize == hiddenSize, "box char at \(pos) should collapse")
+        }
+        // The space after the box collapses too.
+        #expect(font(in: attrs, at: 5)?.pointSize == hiddenSize)
+        // Marker + spacer keep full advance (the drawn square's slot): no collapse font.
+        #expect(font(in: attrs, at: 0)?.pointSize != hiddenSize)
+        #expect(font(in: attrs, at: 1)?.pointSize != hiddenSize)
+
+        // Hanging indent measures only "- " — identical to a bullet item.
+        let taskIndent = headIndent(in: attrs, at: 0)
+        let expected = indentPerLevel + width("- ")
+        #expect(taskIndent != nil)
+        #expect(abs((taskIndent ?? -1) - expected) < 0.01)
+
+        let bulletIndent = headIndent(in: style("- task"), at: 0)
+        #expect(taskIndent == bulletIndent)
+    }
+
+    @Test("revealed task (caret in syntax): no collapse, indent uses the full raw width")
+    func revealedTaskKeepsFullSyntaxWidth() {
+        let attrs = style("- [ ] task", caret: 3)
+
+        // No collapse font on the box while the raw syntax shows.
+        for pos in 2...5 {
+            let f = font(in: attrs, at: pos)
+            #expect(f == nil || f!.pointSize != hiddenSize, "box char at \(pos) must not collapse while revealed")
+        }
+        // Wrapped lines align with the visible "- [ ] ".
+        let expected = indentPerLevel + width("- [ ] ")
+        let revealedIndent = headIndent(in: attrs, at: 0)
+        #expect(revealedIndent != nil)
+        #expect(abs((revealedIndent ?? -1) - expected) < 0.01)
+    }
+
+    @Test("checked task ([x]) collapses the same as unchecked")
+    func checkedTaskCollapsesLikeUnchecked() {
+        let attrs = style("- [x] task")
+        for pos in 2...5 {
+            #expect(font(in: attrs, at: pos)?.pointSize == hiddenSize, "checked box char at \(pos) should collapse")
+        }
+        let expected = indentPerLevel + width("- ")
+        let checkedIndent = headIndent(in: attrs, at: 0)
+        #expect(abs((checkedIndent ?? -1) - expected) < 0.01)
+        #expect(checkedIndent == headIndent(in: style("- [ ] task"), at: 0))
+    }
+
+    @Test("ordered task (1. [ ]) shares the ordered item's indent")
+    func orderedTaskSharesOrderedIndent() {
+        // "1. [ ] a": marker 0..2, spacer 2..3, box 3..6, gap 6..7, content 7...
+        let attrs = style("1. [ ] a")
+        for pos in 3...6 {
+            #expect(font(in: attrs, at: pos)?.pointSize == hiddenSize, "ordered box char at \(pos) should collapse")
+        }
+        let taskIndent = headIndent(in: attrs, at: 0)
+        let orderedIndent = headIndent(in: style("1. a"), at: 0)
+        #expect(taskIndent != nil)
+        #expect(taskIndent == orderedIndent)
+        #expect(abs((taskIndent ?? -1) - (indentPerLevel + width("1. "))) < 0.01)
+    }
+}
+
 /// Canonical, order-independent string of styled ranges so two style runs can be
 /// compared for equality.
 private func styleKeySnapshot(_ ranges: [StyledRange]) -> String {
