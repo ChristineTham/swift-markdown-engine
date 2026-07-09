@@ -221,6 +221,9 @@ enum HTMLToMarkdownConverter {
     private static func renderList(_ node: Node, ordered: Bool, depth: Int) -> String {
         var items: [String] = []
         var number = 0
+        if ordered, let start = node.attrs["start"], let seed = Int(start) {
+            number = seed - 1
+        }
         for child in node.children where child.name == "li" {
             number += 1
             items.append(renderListItem(child, ordered: ordered, number: number, depth: depth))
@@ -231,29 +234,77 @@ enum HTMLToMarkdownConverter {
     private static func renderListItem(_ li: Node, ordered: Bool, number: Int, depth: Int) -> String {
         let indent = String(repeating: "  ", count: depth)
 
-        var inlineChildren: [Node] = []
-        var nestedLists: [Node] = []
-        for child in li.children {
-            if child.name == "ul" || child.name == "ol" {
-                nestedLists.append(child)
-            } else {
-                inlineChildren.append(child)
-            }
-        }
-
         let marker: String
         if let box = findCheckbox(li) {
             marker = isChecked(box) ? "- [x] " : "- [ ] "
         } else {
             marker = ordered ? "\(number). " : "- "
         }
+        // Continuation lines align under the item's text (past the marker).
+        let contIndent = indent + String(repeating: " ", count: marker.count)
 
-        var line = indent + marker + renderInlineChildren(inlineChildren).htmlTrimmed
-        for list in nestedLists {
-            let sub = renderList(list, ordered: list.name == "ol", depth: depth + 1)
-            if !sub.isEmpty { line += "\n" + sub }
+        // Walk the item's children, keeping the leading inline run as the head
+        // line, block children (paragraphs, etc.) as indented continuation
+        // blocks, and lists as nested lists. A <div> is a transparent wrapper.
+        var head = ""
+        var headSet = false
+        var blocks: [String] = []        // non-list continuation blocks
+        var nestedLists: [String] = []   // already carry their depth+1 indent
+        var inlineRun: [Node] = []
+
+        func flushInline() {
+            guard !inlineRun.isEmpty else { return }
+            let rendered = renderInlineChildren(inlineRun).htmlTrimmed
+            inlineRun.removeAll()
+            guard !rendered.isEmpty else { return }
+            if !headSet { head = rendered; headSet = true } else { blocks.append(rendered) }
+        }
+
+        func walk(_ children: [Node]) {
+            for child in children {
+                switch child.name {
+                case "ul", "ol":
+                    flushInline()
+                    let sub = renderList(child, ordered: child.name == "ol", depth: depth + 1)
+                    if !sub.isEmpty { nestedLists.append(sub) }
+                case "div":
+                    walk(child.children)
+                case "p", "blockquote", "pre", "table", "hr",
+                     "h1", "h2", "h3", "h4", "h5", "h6":
+                    flushInline()
+                    if let block = renderBlock(child), !block.isEmpty { blocks.append(block) }
+                default:
+                    inlineRun.append(child)
+                }
+            }
+        }
+        walk(li.children)
+        flushInline()
+        if !headSet, !blocks.isEmpty {
+            head = blocks.removeFirst()
+            headSet = true
+        }
+
+        // First line: marker + head; re-indent any embedded (hard-break) newline
+        // so the continuation stays inside the item.
+        let headLines = head.components(separatedBy: "\n")
+        var line = indent + marker + (headLines.first ?? "")
+        for extra in headLines.dropFirst() {
+            line += "\n" + (extra.isEmpty ? "" : contIndent + extra)
+        }
+        for block in blocks {
+            line += "\n\n" + indentLines(block, by: contIndent)
+        }
+        for nested in nestedLists {
+            line += "\n" + nested
         }
         return line
+    }
+
+    private static func indentLines(_ s: String, by prefix: String) -> String {
+        s.components(separatedBy: "\n")
+            .map { $0.isEmpty ? "" : prefix + $0 }
+            .joined(separator: "\n")
     }
 
     private static func renderPre(_ node: Node) -> String {
@@ -308,7 +359,7 @@ enum HTMLToMarkdownConverter {
     }
 
     private static func renderInlineNode(_ node: Node) -> String {
-        if node.isText { return collapseWhitespace(node.text) }
+        if node.isText { return escapeMarkdown(collapseWhitespace(node.text)) }
         switch node.name {
         case "strong", "b":
             return "**" + renderInlineChildren(node.children) + "**"
@@ -321,17 +372,94 @@ enum HTMLToMarkdownConverter {
         case "code":
             return "`" + rawText(node) + "`"
         case "br":
-            return "\n"
+            return "  \n"   // CommonMark hard break
         case "a":
             let inner = renderInlineChildren(node.children)
             let href = node.attrs["href"] ?? ""
-            return href.isEmpty ? inner : "[\(inner)](\(href))"
+            return href.isEmpty ? inner : "[\(inner)](\(formatLinkDestination(href)))"
         case "input":
             return ""   // checkboxes are handled at the list-item level
         default:
             // Unknown / styling-only tags (span, font, sup, etc.) → unwrap.
             return renderInlineChildren(node.children)
         }
+    }
+
+    /// Backslash-escapes markdown-significant characters in a TEXT node so pasted
+    /// literal text does not re-parse as markdown. Conservative: only a leading
+    /// block marker at the start of the run, plus inline emphasis/code/link
+    /// delimiters, are escaped. Code spans/fences bypass this (they use rawText).
+    private static func escapeMarkdown(_ s: String) -> String {
+        guard !s.isEmpty else { return s }
+        let chars = Array(s)
+        var out = ""
+        var i = 0
+
+        // Leading block marker (treat the run's start as a potential line start).
+        if chars[0] == "#" {
+            var hashes = 0
+            while hashes < chars.count, hashes < 6, chars[hashes] == "#" { hashes += 1 }
+            if hashes < chars.count, chars[hashes] == " " {
+                out.append("\\#")
+                i = 1
+            }
+        } else if chars[0] == ">" {
+            out.append("\\>")
+            i = 1
+        } else if chars[0] == "-" || chars[0] == "*" || chars[0] == "+" {
+            if chars.count > 1, chars[1] == " " {
+                out.append("\\")
+                out.append(chars[0])
+                i = 1
+            }
+        } else if chars[0].isNumber {
+            var d = 0
+            while d < chars.count, chars[d].isNumber { d += 1 }
+            if d < chars.count, chars[d] == "." || chars[d] == ")",
+               d + 1 == chars.count || chars[d + 1] == " " {
+                for k in 0..<d { out.append(chars[k]) }
+                out.append("\\")
+                out.append(chars[d])
+                i = d + 1
+            }
+        }
+
+        // Inline delimiters, anywhere in the run.
+        while i < chars.count {
+            let c = chars[i]
+            switch c {
+            case "*", "_", "`", "[", "]":
+                out.append("\\")
+                out.append(c)
+            default:
+                out.append(c)
+            }
+            i += 1
+        }
+        return out
+    }
+
+    /// Formats a link/image destination. Angle-wraps it when it contains
+    /// whitespace or unbalanced parentheses, which would otherwise break the
+    /// `(dest)` syntax; leaves clean destinations bare.
+    private static func formatLinkDestination(_ href: String) -> String {
+        let hasWhitespace = href.contains { $0.isWhitespace }
+        var depth = 0
+        var balanced = true
+        for c in href {
+            if c == "(" {
+                depth += 1
+            } else if c == ")" {
+                depth -= 1
+                if depth < 0 { balanced = false; break }
+            }
+        }
+        if depth != 0 { balanced = false }
+        guard hasWhitespace || !balanced else { return href }
+        let safe = href
+            .replacingOccurrences(of: "<", with: "%3C")
+            .replacingOccurrences(of: ">", with: "%3E")
+        return "<\(safe)>"
     }
 
     // MARK: - Tree helpers
@@ -397,15 +525,61 @@ enum HTMLToMarkdownConverter {
         return out
     }
 
+    private static let namedEntities: [String: String] = [
+        "nbsp": " ", "lt": "<", "gt": ">", "quot": "\"",
+        "apos": "'", "amp": "&"
+    ]
+
+    /// Decodes named entities plus numeric (`&#NNN;`) and hex (`&#xHH;`/`&#XHH;`)
+    /// character references. Malformed or unknown references are left verbatim.
     private static func decodeHTMLEntities(_ s: String) -> String {
         guard s.contains("&") else { return s }
-        return s.replacingOccurrences(of: "&nbsp;", with: " ")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-            .replacingOccurrences(of: "&apos;", with: "'")
-            .replacingOccurrences(of: "&amp;", with: "&")
+        let chars = Array(s)
+        let n = chars.count
+        var out = ""
+        var i = 0
+        while i < n {
+            guard chars[i] == "&", let semi = findSemicolon(chars, from: i + 1, max: 32) else {
+                out.append(chars[i])
+                i += 1
+                continue
+            }
+            let entity = String(chars[(i + 1)..<semi])
+            if entity.hasPrefix("#") {
+                let numPart = entity.dropFirst()
+                let value: UInt32?
+                if let first = numPart.first, first == "x" || first == "X" {
+                    value = UInt32(numPart.dropFirst(), radix: 16)
+                } else {
+                    value = UInt32(numPart)
+                }
+                if let value, let scalar = Unicode.Scalar(value) {
+                    out.append(Character(scalar))
+                    i = semi + 1
+                    continue
+                }
+            } else if let rep = namedEntities[entity] ?? namedEntities[entity.lowercased()] {
+                out.append(rep)
+                i = semi + 1
+                continue
+            }
+            out.append(chars[i])
+            i += 1
+        }
+        return out
+    }
+
+    /// Index of the next `;` within `max` characters, or `nil` if a stray `&`/`<`
+    /// (which cannot appear inside a well-formed reference) is hit first.
+    private static func findSemicolon(_ chars: [Character], from: Int, max: Int) -> Int? {
+        var j = from
+        let limit = Swift.min(chars.count, from + max)
+        while j < limit {
+            if chars[j] == ";" { return j }
+            if chars[j] == "&" || chars[j] == "<" { return nil }
+            j += 1
+        }
+        return nil
     }
 }
 

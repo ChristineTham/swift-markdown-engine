@@ -125,4 +125,72 @@ struct HTMLToMarkdownConverterTests {
     func plainTextIsNil() {
         #expect(md("just text") == nil)
     }
+
+    // MARK: - Fix 1: numeric & hex character references
+
+    @Test("decimal and hex entities decode to their scalars")
+    func numericEntities() {
+        #expect(md("<p>&#123;a&#125; &#x1F600;</p>") == "{a} 😀")
+    }
+
+    // MARK: - Fix 2: <ol start="N">
+
+    @Test("ol start seeds the counter")
+    func orderedListStart() {
+        #expect(md("<ol start=\"5\"><li>a</li><li>b</li></ol>") == "5. a\n6. b")
+    }
+
+    // MARK: - Fix 3: <br> hard break
+
+    @Test("br in a paragraph becomes a hard break")
+    func brHardBreak() {
+        #expect(md("<p>a<br>b</p>") == "a  \nb")
+    }
+
+    @Test("br inside a list item keeps the continuation indented in the item")
+    func brInsideListItem() {
+        #expect(md("<ul><li>a<br>b</li></ul>") == "- a  \n  b")
+    }
+
+    // MARK: - Fix 4: text-node markdown escaping
+
+    @Test("leading ordered marker in text stays literal")
+    func escapeOrderedMarker() {
+        #expect(md("<p>1. First</p>") == "1\\. First")
+    }
+
+    @Test("leading hash in text stays literal")
+    func escapeHeadingMarker() {
+        #expect(md("<p># not a heading</p>") == "\\# not a heading")
+    }
+
+    @Test("literal asterisks are escaped")
+    func escapeAsterisks() {
+        #expect(md("<p>*stars*</p>") == "\\*stars\\*")
+    }
+
+    @Test("real emphasis still produces asterisks")
+    func realEmphasisUnaffected() {
+        #expect(md("<p><em>x</em></p>") == "*x*")
+    }
+
+    // MARK: - Fix 5: block children inside <li>
+
+    @Test("li with two paragraphs keeps both as indented blocks")
+    func listItemParagraphBlocks() {
+        #expect(md("<li><p>First</p><p>Second</p></li>") == "- First\n\n  Second")
+    }
+
+    @Test("nested list wrapped in a div inside li keeps its bullets")
+    func nestedListInDivInsideItem() {
+        let html = "<ul><li>Parent<div><ul><li>Child</li></ul></div></li></ul>"
+        #expect(md(html) == "- Parent\n  - Child")
+    }
+
+    // MARK: - Fix 6: link destination escaping
+
+    @Test("href with whitespace is angle-wrapped")
+    func linkHrefWithSpace() {
+        #expect(md("<a href=\"/my file.md\">doc</a>") == "[doc](</my file.md>)")
+    }
 }
