@@ -14,12 +14,22 @@
 import AppKit
 
 enum MarkdownPasteboardWriter {
+    /// Private flavor carrying the exact raw markdown of the selection. When one
+    /// of our own editors pastes, it prefers this over the derived HTML so wiki
+    /// links (`[[Name|UUID]]`), code, and every other construct round-trip
+    /// byte-exact instead of being re-derived from the lossy HTML flavor.
+    static let markdownType = NSPasteboard.PasteboardType("dev.markdownengine.raw-markdown")
+
     @MainActor
     static func write(markdown: String, to pasteboard: NSPasteboard) {
         pasteboard.clearContents()
 
         // Always keep the raw markdown available as plain text.
         pasteboard.setString(markdown, forType: .string)
+
+        // Also keep the exact raw markdown under our private flavor so our own
+        // paste path can round-trip it losslessly.
+        pasteboard.setString(markdown, forType: Self.markdownType)
 
         // Render the selection to clean HTML.
         let htmlBody = MarkdownHTMLRenderer.html(from: markdown)

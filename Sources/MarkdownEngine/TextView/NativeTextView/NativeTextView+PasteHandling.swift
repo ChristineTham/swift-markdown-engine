@@ -26,12 +26,27 @@ extension NativeTextView {
             return
         }
 
+        // Our own copy: prefer the private raw-markdown flavor so an in-app
+        // copy→paste round-trips byte-exact. The derived HTML flavor is lossy
+        // (e.g. the HTML renderer drops the `|UUID` of a wiki link), so this
+        // must win over the HTML branch below.
+        if let ownMarkdown = pasteboard.string(forType: MarkdownPasteboardWriter.markdownType) {
+            let sanitized = sanitizePastedText(ownMarkdown)
+            if !sanitized.isEmpty {
+                insertPreservingBlockquote(sanitized)
+                return
+            }
+        }
+
         // Rich paste: convert an HTML flavor (Claude, browsers, Word, Notion)
         // into Markdown so lists, headings, tables, and inline formatting
-        // survive — the Obsidian-style incoming direction. The converter returns
-        // nil when the HTML has no convertible structure, so we fall through to
-        // the plain-text flavor below rather than degrading a plain paste.
+        // survive — the Obsidian-style incoming direction. Only run the
+        // converter when the HTML actually carries block-level structure;
+        // inline-only HTML (VS Code's per-line <div>s, a casually copied bold
+        // word or link) would otherwise lose code indentation or gain stray
+        // markdown, so we let it fall through to the clean plain-text flavor.
         if let html = pasteboard.string(forType: .html),
+           Self.htmlHasBlockStructure(html),
            let markdown = HTMLToMarkdownConverter.markdown(fromHTML: html) {
             let sanitized = sanitizePastedText(markdown)
             if !sanitized.isEmpty {
@@ -118,71 +133,20 @@ extension NativeTextView {
         return super.validateUserInterfaceItem(item)
     }
 
-    // MARK: - HTML table → Markdown table
+    // MARK: - HTML structure guard
 
-    private static let trRegex = try! NSRegularExpression(
-        pattern: #"<tr\b[^>]*>(.*?)</tr>"#,
-        options: [.dotMatchesLineSeparators, .caseInsensitive]
-    )
-    private static let cellRegex = try! NSRegularExpression(
-        pattern: #"<t[hd]\b[^>]*>(.*?)</t[hd]>"#,
-        options: [.dotMatchesLineSeparators, .caseInsensitive]
-    )
-    private static let tagStripRegex = try! NSRegularExpression(
-        pattern: #"<[^>]+>"#
-    )
-
-    /// First `<table>` in `html` → CommonMark pipe-table; nil if no table.
-    static func htmlTableToMarkdown(_ html: String) -> String? {
-        guard html.range(of: "<table", options: .caseInsensitive) != nil else { return nil }
-        let nsHtml = html as NSString
-        let trMatches = trRegex.matches(in: html, range: NSRange(location: 0, length: nsHtml.length))
-        guard !trMatches.isEmpty else { return nil }
-
-        var rows: [[String]] = []
-        for trMatch in trMatches {
-            let trContent = nsHtml.substring(with: trMatch.range(at: 1))
-            let nsTr = trContent as NSString
-            let cellMatches = cellRegex.matches(in: trContent, range: NSRange(location: 0, length: nsTr.length))
-            var cells: [String] = []
-            for cellMatch in cellMatches {
-                let raw = nsTr.substring(with: cellMatch.range(at: 1))
-                let nsRaw = raw as NSString
-                let stripped = tagStripRegex.stringByReplacingMatches(
-                    in: raw, range: NSRange(location: 0, length: nsRaw.length), withTemplate: ""
-                )
-                let decoded = decodeHTMLEntities(stripped)
-                    .replacingOccurrences(of: "|", with: #"\|"#)
-                    .replacingOccurrences(of: "\n", with: " ")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                cells.append(decoded)
-            }
-            if !cells.isEmpty { rows.append(cells) }
+    /// True when `html` carries block-level structure worth converting to
+    /// Markdown — a list, heading, table, blockquote, preformatted block, or
+    /// horizontal rule. Inline-only markup (<div>/<span>/<b>/<i>/<a>/<p>) is not
+    /// enough: converting it would mangle VS Code's per-line <div> code or turn
+    /// a casually copied bold word / link into stray markdown, so those pastes
+    /// should fall through to the clean plain-text flavor instead.
+    static func htmlHasBlockStructure(_ html: String) -> Bool {
+        let needles = ["<ul ", "<ul>", "<ol", "<h1", "<h2", "<h3", "<h4", "<h5", "<h6",
+                       "<table", "<blockquote", "<pre", "<hr"]
+        for needle in needles where html.range(of: needle, options: .caseInsensitive) != nil {
+            return true
         }
-        guard !rows.isEmpty else { return nil }
-
-        let columnCount = rows.map(\.count).max() ?? 0
-        guard columnCount > 0 else { return nil }
-        func pad(_ row: [String]) -> [String] {
-            row + Array(repeating: "", count: max(0, columnCount - row.count))
-        }
-
-        var lines: [String] = []
-        lines.append("| " + pad(rows[0]).joined(separator: " | ") + " |")
-        lines.append("|" + Array(repeating: "---", count: columnCount).joined(separator: "|") + "|")
-        for row in rows.dropFirst() {
-            lines.append("| " + pad(row).joined(separator: " | ") + " |")
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    private static func decodeHTMLEntities(_ s: String) -> String {
-        s.replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-            .replacingOccurrences(of: "&apos;", with: "'")
-            .replacingOccurrences(of: "&nbsp;", with: " ")
+        return false
     }
 }
