@@ -26,20 +26,21 @@ extension NativeTextView {
             return
         }
 
-        // Recover HTML tables only when plain text lacks table delimiters —
-        // otherwise the source already provided a usable text representation.
-        let plain = pasteboard.string(forType: .string)
-        let plainHasTableSep = plain.map { $0.contains("|") || $0.contains("\t") } ?? false
-
-        if !plainHasTableSep,
-           let html = pasteboard.string(forType: .html),
-           html.range(of: "<table", options: .caseInsensitive) != nil,
-           let markdownTable = Self.htmlTableToMarkdown(html) {
-            insertText(markdownTable, replacementRange: selectedRange())
-            return
+        // Rich paste: convert an HTML flavor (Claude, browsers, Word, Notion)
+        // into Markdown so lists, headings, tables, and inline formatting
+        // survive — the Obsidian-style incoming direction. The converter returns
+        // nil when the HTML has no convertible structure, so we fall through to
+        // the plain-text flavor below rather than degrading a plain paste.
+        if let html = pasteboard.string(forType: .html),
+           let markdown = HTMLToMarkdownConverter.markdown(fromHTML: html) {
+            let sanitized = sanitizePastedText(markdown)
+            if !sanitized.isEmpty {
+                insertPreservingBlockquote(sanitized)
+                return
+            }
         }
 
-        if let pasted = plain {
+        if let pasted = pasteboard.string(forType: .string) {
             let sanitized = sanitizePastedText(pasted)
             if !sanitized.isEmpty {
                 insertPreservingBlockquote(sanitized)
