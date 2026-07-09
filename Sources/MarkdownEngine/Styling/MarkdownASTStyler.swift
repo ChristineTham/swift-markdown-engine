@@ -193,9 +193,6 @@ enum MarkdownASTStyler {
         let markerWidth = (ctx.ns.substring(with: markerGroup) as NSString)
             .size(withAttributes: [.font: ctx.baseFont]).width
         let depthIndent = CGFloat(MarkdownLists.indentLevel(from: ws)) * ctx.config.lists.indentPerLevel
-        let extraSpacing = (item.checkbox != nil && !item.checked)
-            ? HeadingHelpers.checkboxExtraSpacing(font: ctx.baseFont, configuration: ctx.config.checkbox)
-            : 0
         let ps = NSMutableParagraphStyle()
         let lineHeight = ctx.baseLineHeight + ctx.config.lists.extraLineHeight
         ps.minimumLineHeight = lineHeight
@@ -206,7 +203,12 @@ enum MarkdownASTStyler {
         ps.tabStops = []
         ps.defaultTabInterval = ctx.config.lists.indentPerLevel
         ps.firstLineHeadIndent = ctx.config.lists.indentPerLevel
-        ps.headIndent = ctx.config.lists.indentPerLevel + depthIndent + markerWidth + extraSpacing
+        // Wrapped lines hang under the first line's content (indent + marker
+        // width). No checkbox-specific extra: the box is a drawn overlay that
+        // doesn't change text advance, so adding it here (and only here, not to
+        // firstLineHeadIndent) shifted an unchecked task's wrapped lines right
+        // of its first line.
+        ps.headIndent = ctx.config.lists.indentPerLevel + depthIndent + markerWidth
         attrs.append((line, [.paragraphStyle: ps]))
 
         // 2. Marker decoration (suppressed while the caret edits the syntax).
