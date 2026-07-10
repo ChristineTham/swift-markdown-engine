@@ -7,8 +7,9 @@
 //  Writes a clean, multi-flavor representation of a raw markdown selection to
 //  an NSPasteboard. The editor's storage holds RAW markdown styled in place,
 //  so a default copy leaks syntax markers and drops thematic breaks. Here we
-//  render the raw markdown to clean HTML and derive RTF + web archive from it,
-//  while keeping the raw markdown itself as the plain-text flavor.
+//  render the raw markdown to clean HTML, write it as web archive + HTML,
+//  derive RTF with visible stand-ins for constructs RTF cannot carry, and
+//  keep the raw markdown itself as the plain-text flavor.
 //
 
 import AppKit
@@ -35,41 +36,57 @@ enum MarkdownPasteboardWriter {
         let htmlBody = MarkdownHTMLRenderer.html(from: markdown)
         let fullHTML = "<html><head><meta charset=\"utf-8\"></head><body>\(htmlBody)</body></html>"
 
-        // Build a clean attributed string from the HTML on the main thread.
-        guard let data = fullHTML.data(using: .utf8),
-              let attr = try? NSAttributedString(
-                  data: data,
-                  options: [
-                      .documentType: NSAttributedString.DocumentType.html,
-                      .characterEncoding: String.Encoding.utf8.rawValue,
-                  ],
-                  documentAttributes: nil
-              )
-        else {
-            // Raw markdown is already on the pasteboard as plain text.
-            pasteboard.setData(Data(fullHTML.utf8), forType: .html)
-            return
-        }
-
-        let fullRange = NSRange(location: 0, length: attr.length)
-
-        // Derive and write RTF.
-        if let rtf = try? attr.data(
-            from: fullRange,
-            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
-        ) {
-            pasteboard.setData(rtf, forType: .rtf)
-        }
-
-        // Derive and write the web archive (the point of this change).
-        if let web = try? attr.data(
-            from: fullRange,
-            documentAttributes: [.documentType: NSAttributedString.DocumentType.webArchive]
-        ) {
+        // Web archive built straight from OUR html — deriving it from
+        // NSAttributedString(html:) silently dropped <hr> and checkboxes, so
+        // WebKit-reading consumers get the real document instead.
+        if let web = webArchiveData(html: fullHTML) {
             pasteboard.setData(web, forType: NSPasteboard.PasteboardType("com.apple.webarchive"))
         }
-
-        // Also write the raw HTML.
         pasteboard.setData(Data(fullHTML.utf8), forType: .html)
+
+        // RTF for consumers without web-archive support. RTF has no horizontal
+        // rule or checkbox and the HTML importer drops both, so convert a body
+        // with visible stand-ins (─ rule, ☐/☑) on the main thread.
+        let rtfHTML = "<html><head><meta charset=\"utf-8\"></head><body>\(rtfFallbackBody(htmlBody))</body></html>"
+        if let data = rtfHTML.data(using: .utf8),
+           let attr = try? NSAttributedString(
+               data: data,
+               options: [
+                   .documentType: NSAttributedString.DocumentType.html,
+                   .characterEncoding: String.Encoding.utf8.rawValue,
+               ],
+               documentAttributes: nil
+           ),
+           let rtf = try? attr.data(
+               from: NSRange(location: 0, length: attr.length),
+               documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+           ) {
+            pasteboard.setData(rtf, forType: .rtf)
+        }
+    }
+
+    /// Stand-ins for constructs the RTF path cannot represent — the HTML
+    /// importer drops `<hr>` and `<input>` outright, so substitute a visible
+    /// rule and checkbox glyphs before converting.
+    static func rtfFallbackBody(_ body: String) -> String {
+        body
+            .replacingOccurrences(of: "<hr>", with: "<p>─────────────────────────</p>")
+            .replacingOccurrences(of: "<input type=\"checkbox\" checked disabled>", with: "☑")
+            .replacingOccurrences(of: "<input type=\"checkbox\" disabled>", with: "☐")
+    }
+
+    /// A minimal Safari-style web archive with `html` as its main resource.
+    static func webArchiveData(html: String) -> Data? {
+        let resource: [String: Any] = [
+            "WebResourceData": Data(html.utf8),
+            "WebResourceMIMEType": "text/html",
+            "WebResourceTextEncodingName": "UTF-8",
+            "WebResourceURL": "about:blank",
+        ]
+        return try? PropertyListSerialization.data(
+            fromPropertyList: ["WebMainResource": resource],
+            format: .binary,
+            options: 0
+        )
     }
 }
