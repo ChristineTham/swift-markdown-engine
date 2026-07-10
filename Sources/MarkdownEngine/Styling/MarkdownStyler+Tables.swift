@@ -85,6 +85,11 @@ extension MarkdownStyler {
                     sourceID: computedSourceID
                 )
                 : .collapsedSource(markerTexts: [])
+#if DEBUG
+            // TEMP diagnostics (invisible pasted table): does the style pass
+            // render this table, when, and in which mode?
+            print("📊 TABLE styled range=\(token.range) img=\(Int(image.size.width))x\(Int(image.size.height)) container=\(Int(containerWidth)) mode=\(isWide ? "WIDE(overlay)" : "collapsed")")
+#endif
             _ = appendRenderedStandaloneBlock(
                 for: token,
                 rawContent: source,
