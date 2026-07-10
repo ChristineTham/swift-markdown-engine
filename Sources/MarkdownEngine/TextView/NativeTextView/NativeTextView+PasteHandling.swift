@@ -21,6 +21,16 @@ extension NativeTextView {
 
         let pasteboard = NSPasteboard.general
 
+#if DEBUG
+        // TEMP diagnostics (table paste): which flavors arrive, which branch wins.
+        print("📋 PASTE types=\((pasteboard.types ?? []).map(\.rawValue))")
+        if let html = pasteboard.string(forType: .html) {
+            print("📋 PASTE html: \(html.count) chars, structural=\(Self.htmlHasBlockStructure(html)), head: \(String(html.prefix(220)))")
+        } else {
+            print("📋 PASTE no html flavor")
+        }
+#endif
+
         if let imageEmbed = onPasteImage?(pasteboard), !imageEmbed.isEmpty {
             insertBlockEmbed(imageEmbed)
             return
