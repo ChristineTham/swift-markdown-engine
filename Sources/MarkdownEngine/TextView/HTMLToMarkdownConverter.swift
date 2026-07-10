@@ -162,26 +162,48 @@ enum HTMLToMarkdownConverter {
     private static func renderBlocks(_ children: [Node]) -> String {
         var blocks: [String] = []
         var inlineBuffer = ""
+        // Consecutive bare <li> siblings (Chromium strips the ul/ol wrapper on
+        // within-list copies) — collected into ONE tight list, not \n\n-spaced.
+        var looseItems: [String] = []
 
-        func flush() {
+        func flushInline() {
             let trimmed = inlineBuffer.htmlTrimmed
             if !trimmed.isEmpty { blocks.append(trimmed) }
             inlineBuffer = ""
         }
+        func flushItems() {
+            if !looseItems.isEmpty {
+                blocks.append(looseItems.joined(separator: "\n"))
+                looseItems = []
+            }
+        }
 
         for child in children {
             if child.isText {
+                // Whitespace between bare <li> siblings must not split the run.
+                if !looseItems.isEmpty,
+                   child.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    continue
+                }
+                flushItems()
                 inlineBuffer += renderInlineNode(child)
                 continue
             }
+            if child.name == "li" {
+                flushInline()
+                looseItems.append(renderListItem(child, ordered: false, number: 1, depth: 0))
+                continue
+            }
+            flushItems()
             if let block = renderBlock(child) {
-                flush()
+                flushInline()
                 if !block.isEmpty { blocks.append(block) }
             } else {
                 inlineBuffer += renderInlineNode(child)
             }
         }
-        flush()
+        flushInline()
+        flushItems()
         return blocks.joined(separator: "\n\n")
     }
 

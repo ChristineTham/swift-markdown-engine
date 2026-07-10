@@ -187,6 +187,25 @@ struct HTMLToMarkdownConverterTests {
         #expect(md(html) == "- Parent\n  - Child")
     }
 
+    // MARK: - Bare <li> fragments (Chromium drops the ul/ol wrapper on copy)
+
+    @Test("consecutive bare list items become one tight bullet list")
+    func bareListItems() {
+        let html = "<meta charset='utf-8'>"
+            + "<li class=\"font-claude-response-body\"><strong>Fristberechnung:</strong> Die zwei Wochen laufen ab <em>Zugang</em>.</li>"
+            + "<li><strong>Schriftform:</strong> Muss eigenhändig unterschrieben sein.</li>"
+            + "<li><strong>Zugangsnachweis:</strong> Am besten persönliche Übergabe.</li>"
+        #expect(md(html) == "- **Fristberechnung:** Die zwei Wochen laufen ab *Zugang*.\n"
+            + "- **Schriftform:** Muss eigenhändig unterschrieben sein.\n"
+            + "- **Zugangsnachweis:** Am besten persönliche Übergabe.")
+    }
+
+    @Test("whitespace between bare list items does not split the run")
+    func bareListItemsWithWhitespace() {
+        let html = "<li>one</li>\n  <li>two</li>"
+        #expect(md(html) == "- one\n- two")
+    }
+
     // MARK: - Fix 6: link destination escaping
 
     @Test("href with whitespace is angle-wrapped")

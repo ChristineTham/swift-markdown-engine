@@ -111,4 +111,53 @@ struct PasteStructureGuardTests {
     func plainText() {
         #expect(!hasStructure("just some words, no markup at all"))
     }
+
+    // MARK: - Formatted prose (chatbot / web / Word copy) → convert
+
+    @Test("multiple bold-led paragraphs are structural (the chatbot prose shape)")
+    func boldLedParagraphs() {
+        let html = "<p><strong>Fristberechnung:</strong> Die zwei Wochen laufen ab Zugang.</p>"
+            + "<p><strong>Schriftform:</strong> Muss eigenhändig unterschrieben sein.</p>"
+        #expect(hasStructure(html))
+    }
+
+    @Test("Word-style paragraphs with <b> are structural")
+    func wordParagraphs() {
+        let html = "<p class=\"MsoNormal\"><b>Term:</b> definition</p>"
+            + "<p class=\"MsoNormal\">second paragraph with <i>emphasis</i></p>"
+        #expect(hasStructure(html))
+    }
+
+    @Test("multi-paragraph prose with links counts as formatted")
+    func linkedParagraphs() {
+        let html = "<p>See <a href=\"https://x.com\">the spec</a> first.</p>"
+            + "<p>Then read on.</p>"
+        #expect(hasStructure(html))
+    }
+
+    // MARK: - Still plain despite the prose rule
+
+    @Test("two plain paragraphs without any formatting stay plain")
+    func plainParagraphs() {
+        #expect(!hasStructure("<p>First paragraph.</p><p>Second paragraph.</p>"))
+    }
+
+    @Test("a single formatted paragraph stays plain (casual copy)")
+    func singleFormattedParagraph() {
+        #expect(!hasStructure("<p><strong>bold</strong> word in one sentence</p>"))
+    }
+
+    @Test("bare list items are structural (Chromium strips the ul/ol wrapper)")
+    func bareListItems() {
+        let html = "<meta charset='utf-8'><li class=\"x\"><strong>A:</strong> one</li><li>two</li>"
+        #expect(hasStructure(html))
+    }
+
+    @Test("pre does not count as a paragraph tag")
+    func preIsNotParagraph() {
+        // <pre is structural via its own needle — but the <p counter must not
+        // be what trips it (guards the "<p" prefix against "<pre").
+        #expect(hasStructure("<pre>code</pre>"))
+        #expect(!hasStructure("<premium>not a tag</premium><premium>x</premium><b>y</b>"))
+    }
 }

@@ -159,11 +159,42 @@ extension NativeTextView {
     /// a casually copied bold word / link into stray markdown, so those pastes
     /// should fall through to the clean plain-text flavor instead.
     static func htmlHasBlockStructure(_ html: String) -> Bool {
-        let needles = ["<ul ", "<ul>", "<ol", "<h1", "<h2", "<h3", "<h4", "<h5", "<h6",
-                       "<table", "<blockquote", "<pre", "<hr"]
-        for needle in needles where html.range(of: needle, options: .caseInsensitive) != nil {
+        // "li" included bare: Chromium serializes a within-list selection as
+        // naked <li> elements without the ul/ol wrapper (Claude/ChatGPT copies).
+        let blockTags = ["ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6",
+                         "table", "blockquote", "pre", "hr"]
+        for tag in blockTags where openingTagCount(html, tag, stopAfter: 1) > 0 {
+            return true
+        }
+        // Formatted prose (chatbot / web / Word copy): several real paragraphs
+        // plus inline formatting. A lone styled word/sentence (≤1 <p>) and
+        // VS Code's div/span code (no <p> at all) stay on the plain-text path.
+        let inlineTags = ["strong", "em", "b", "i", "code", "mark", "del", "s", "a", "u"]
+        if openingTagCount(html, "p", stopAfter: 2) >= 2,
+           inlineTags.contains(where: { openingTagCount(html, $0, stopAfter: 1) > 0 }) {
             return true
         }
         return false
+    }
+
+    /// Occurrences of an opening `<tag>` / `<tag …>` / `<tag/>` in `html`,
+    /// case-insensitive. The boundary check keeps prefixes from matching
+    /// (`<p` vs `<pre`, `<b` vs `<br>`, `<s` vs `<span`). Stops counting at
+    /// `stopAfter` so callers pay only for the answer they need.
+    private static func openingTagCount(_ html: String, _ tag: String, stopAfter: Int) -> Int {
+        let needle = "<" + tag
+        var count = 0
+        var searchRange = html.startIndex..<html.endIndex
+        while let r = html.range(of: needle, options: .caseInsensitive, range: searchRange) {
+            if r.upperBound < html.endIndex {
+                let c = html[r.upperBound]
+                if c == ">" || c == "/" || c == " " || c == "\t" || c == "\n" || c == "\r" {
+                    count += 1
+                    if count >= stopAfter { return count }
+                }
+            }
+            searchRange = r.upperBound..<html.endIndex
+        }
+        return count
     }
 }
