@@ -126,90 +126,37 @@ struct HTMLToMarkdownConverterTests {
         #expect(md("just text") == nil)
     }
 
-    // MARK: - Fix 1: numeric & hex character references
+    // MARK: - Regression fixes (entities, ol start, hard breaks, href)
 
-    @Test("decimal and hex entities decode to their scalars")
-    func numericEntities() {
+    @Test("entities, ol start, hard breaks, and unsafe hrefs")
+    func converterFixes() {
         #expect(md("<p>&#123;a&#125; &#x1F600;</p>") == "{a} 😀")
-    }
-
-    // MARK: - Fix 2: <ol start="N">
-
-    @Test("ol start seeds the counter")
-    func orderedListStart() {
         #expect(md("<ol start=\"5\"><li>a</li><li>b</li></ol>") == "5. a\n6. b")
-    }
-
-    // MARK: - Fix 3: <br> hard break
-
-    @Test("br in a paragraph becomes a hard break")
-    func brHardBreak() {
         #expect(md("<p>a<br>b</p>") == "a  \nb")
-    }
-
-    @Test("br inside a list item keeps the continuation indented in the item")
-    func brInsideListItem() {
         #expect(md("<ul><li>a<br>b</li></ul>") == "- a  \n  b")
+        #expect(md("<a href=\"/my file.md\">doc</a>") == "[doc](</my file.md>)")
     }
 
-    // MARK: - Fix 4: text-node markdown escaping
-
-    @Test("leading ordered marker in text stays literal")
-    func escapeOrderedMarker() {
+    @Test("literal text is escaped, real emphasis is not")
+    func textEscaping() {
         #expect(md("<p>1. First</p>") == "1\\. First")
-    }
-
-    @Test("leading hash in text stays literal")
-    func escapeHeadingMarker() {
         #expect(md("<p># not a heading</p>") == "\\# not a heading")
-    }
-
-    @Test("literal asterisks are escaped")
-    func escapeAsterisks() {
         #expect(md("<p>*stars*</p>") == "\\*stars\\*")
-    }
-
-    @Test("real emphasis still produces asterisks")
-    func realEmphasisUnaffected() {
         #expect(md("<p><em>x</em></p>") == "*x*")
     }
 
-    // MARK: - Fix 5: block children inside <li>
-
-    @Test("li with two paragraphs keeps both as indented blocks")
-    func listItemParagraphBlocks() {
+    @Test("block children inside li stay in the item")
+    func listItemBlocks() {
         #expect(md("<li><p>First</p><p>Second</p></li>") == "- First\n\n  Second")
+        #expect(md("<ul><li>Parent<div><ul><li>Child</li></ul></div></li></ul>") == "- Parent\n  - Child")
     }
 
-    @Test("nested list wrapped in a div inside li keeps its bullets")
-    func nestedListInDivInsideItem() {
-        let html = "<ul><li>Parent<div><ul><li>Child</li></ul></div></li></ul>"
-        #expect(md(html) == "- Parent\n  - Child")
-    }
-
-    // MARK: - Bare <li> fragments (Chromium drops the ul/ol wrapper on copy)
-
-    @Test("consecutive bare list items become one tight bullet list")
+    // Chromium strips the ul/ol wrapper on within-list copies (Claude/ChatGPT):
+    // consecutive bare <li> become one tight bullet list, whitespace between
+    // siblings must not split the run.
+    @Test("bare li fragments become one tight bullet list")
     func bareListItems() {
-        let html = "<meta charset='utf-8'>"
-            + "<li class=\"font-claude-response-body\"><strong>Fristberechnung:</strong> Die zwei Wochen laufen ab <em>Zugang</em>.</li>"
-            + "<li><strong>Schriftform:</strong> Muss eigenhändig unterschrieben sein.</li>"
-            + "<li><strong>Zugangsnachweis:</strong> Am besten persönliche Übergabe.</li>"
-        #expect(md(html) == "- **Fristberechnung:** Die zwei Wochen laufen ab *Zugang*.\n"
-            + "- **Schriftform:** Muss eigenhändig unterschrieben sein.\n"
-            + "- **Zugangsnachweis:** Am besten persönliche Übergabe.")
-    }
-
-    @Test("whitespace between bare list items does not split the run")
-    func bareListItemsWithWhitespace() {
-        let html = "<li>one</li>\n  <li>two</li>"
-        #expect(md(html) == "- one\n- two")
-    }
-
-    // MARK: - Fix 6: link destination escaping
-
-    @Test("href with whitespace is angle-wrapped")
-    func linkHrefWithSpace() {
-        #expect(md("<a href=\"/my file.md\">doc</a>") == "[doc](</my file.md>)")
+        #expect(md("<meta charset='utf-8'><li class=\"x\"><strong>A:</strong> one</li>\n  <li>two</li>")
+            == "- **A:** one\n- two")
     }
 }
