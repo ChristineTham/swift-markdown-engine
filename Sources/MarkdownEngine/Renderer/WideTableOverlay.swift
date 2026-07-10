@@ -258,10 +258,6 @@ extension NativeTextView {
             }
 
             let anchorRect = bridge.boundingRect(forCharacterRange: attrRange, in: container)
-#if DEBUG
-            // TEMP diagnostics (invisible pasted table): overlay reconcile result.
-            print("📊 TABLE overlay id=\(sourceID) anchor=\(anchorRect.isEmpty ? "EMPTY-RECT(skip!)" : "\(Int(anchorRect.minX)),\(Int(anchorRect.minY))") existing=\(wideTableOverlays[sourceID] != nil)")
-#endif
             guard !anchorRect.isEmpty else { return }
 
             let totalHeight = (storage.attribute(.scrollableBlockTotalHeight, at: attrRange.location, effectiveRange: nil) as? CGFloat) ?? image.size.height

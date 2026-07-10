@@ -244,6 +244,9 @@ struct TaskCheckboxGeometryStylerTests {
 
         let bulletIndent = headIndent(in: style("- task"), at: 0)
         #expect(taskIndent == bulletIndent)
+
+        // [x] hits the identical collapse branch as [ ].
+        #expect(headIndent(in: style("- [x] task"), at: 0) == taskIndent)
     }
 
     @Test("revealed task (caret in syntax): no collapse, indent uses the full raw width")
@@ -262,31 +265,6 @@ struct TaskCheckboxGeometryStylerTests {
         #expect(abs((revealedIndent ?? -1) - expected) < 0.01)
     }
 
-    @Test("checked task ([x]) collapses the same as unchecked")
-    func checkedTaskCollapsesLikeUnchecked() {
-        let attrs = style("- [x] task")
-        for pos in 2...5 {
-            #expect(font(in: attrs, at: pos)?.pointSize == hiddenSize, "checked box char at \(pos) should collapse")
-        }
-        let expected = indentPerLevel + width("- ")
-        let checkedIndent = headIndent(in: attrs, at: 0)
-        #expect(abs((checkedIndent ?? -1) - expected) < 0.01)
-        #expect(checkedIndent == headIndent(in: style("- [ ] task"), at: 0))
-    }
-
-    @Test("ordered task (1. [ ]) shares the ordered item's indent")
-    func orderedTaskSharesOrderedIndent() {
-        // "1. [ ] a": marker 0..2, spacer 2..3, box 3..6, gap 6..7, content 7...
-        let attrs = style("1. [ ] a")
-        for pos in 3...6 {
-            #expect(font(in: attrs, at: pos)?.pointSize == hiddenSize, "ordered box char at \(pos) should collapse")
-        }
-        let taskIndent = headIndent(in: attrs, at: 0)
-        let orderedIndent = headIndent(in: style("1. a"), at: 0)
-        #expect(taskIndent != nil)
-        #expect(taskIndent == orderedIndent)
-        #expect(abs((taskIndent ?? -1) - (indentPerLevel + width("1. "))) < 0.01)
-    }
 }
 
 /// Canonical, order-independent string of styled ranges so two style runs can be

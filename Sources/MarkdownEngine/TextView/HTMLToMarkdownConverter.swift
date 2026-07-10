@@ -223,8 +223,6 @@ enum HTMLToMarkdownConverter {
             return renderList(node, ordered: false, depth: 0)
         case "ol":
             return renderList(node, ordered: true, depth: 0)
-        case "li":
-            return renderListItem(node, ordered: false, number: 1, depth: 0)
         case "blockquote":
             let inner = renderBlocks(node.children)
             let lines = inner.components(separatedBy: "\n").map { $0.isEmpty ? ">" : "> " + $0 }
@@ -235,6 +233,13 @@ enum HTMLToMarkdownConverter {
             return renderTable(node)
         case "div":
             return renderBlocks(node.children)
+        case "html", "body":
+            // Some sources (GPT, CF_HTML exporters) put a full document on the
+            // clipboard; without these cases the wrapper fell into the inline
+            // unwrap and glued every block's text into one run.
+            return renderBlocks(node.children)
+        case "head", "style", "script", "title":
+            return ""   // metadata / code-for-the-browser — never content
         default:
             return nil
         }
@@ -254,10 +259,8 @@ enum HTMLToMarkdownConverter {
     }
 
     private static func renderListItem(_ li: Node, ordered: Bool, number: Int, depth: Int) -> String {
-        // One TAB per nesting level — the editor's native indent unit (the
-        // list handler's Tab key inserts \t, and a tab renders as one full
-        // 27.5pt indent step). Two spaces would parse as a level but render
-        // only ~7pt wide, leaving pasted sublists visually barely indented.
+        // One TAB per nesting level — the editor's native indent unit; two
+        // spaces would parse as a level but render barely indented (~7pt).
         let indent = String(repeating: "\t", count: depth)
 
         let marker: String
@@ -405,6 +408,8 @@ enum HTMLToMarkdownConverter {
             return href.isEmpty ? inner : "[\(inner)](\(formatLinkDestination(href)))"
         case "input":
             return ""   // checkboxes are handled at the list-item level
+        case "head", "style", "script", "title":
+            return ""   // metadata / code-for-the-browser — unwrapping would leak CSS/JS as text
         default:
             // Unknown / styling-only tags (span, font, sup, etc.) → unwrap.
             return renderInlineChildren(node.children)

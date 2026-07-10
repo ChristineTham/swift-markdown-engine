@@ -110,19 +110,9 @@ public enum MarkdownHTMLRenderer {
     }
 
     private static func listItem(_ item: ListItem, ns: NSString) -> String {
+        // Task items copy as plain list items (user's call: a simple bullet
+        // reads better in rich targets than checkbox glyphs).
         let content = renderInlines(item.inlines, ns: ns)
-        if item.checkbox != nil {
-            let box = item.checked
-                ? "<input type=\"checkbox\" checked disabled>"
-                : "<input type=\"checkbox\" disabled>"
-            // GitHub-style task item: the checkbox REPLACES the list marker.
-            // WebKit honors list-style-type on the <li>, so web-archive/html
-            // consumers render checkbox-only items while non-task siblings
-            // keep their bullets. (The Cocoa HTML importer ignores this style
-            // and emits a bullet regardless — the RTF path rewrites task items
-            // out of list markup entirely; see rtfFallbackBody.)
-            return "<li style=\"list-style-type: none\">\(box) \(content)</li>"
-        }
         return "<li>\(content)</li>"
     }
 
@@ -138,23 +128,20 @@ public enum MarkdownHTMLRenderer {
 
         let escaped = escape(body.joined(separator: "\n"))
         if let language, !language.isEmpty {
-            return "<pre><code class=\"language-\(escapeAttr(language))\">\(escaped)</code></pre>"
+            return "<pre><code class=\"language-\(escape(language))\">\(escaped)</code></pre>"
         }
         return "<pre><code>\(escaped)</code></pre>"
     }
 
-    /// A line that is only fence characters (``` or ~~~), after trimming.
+    /// The parser only produces column-0 backtick fences (BlockParser.isFence),
+    /// so match that contract when stripping the closing fence line.
     private static func isFenceLine(_ line: String) -> Bool {
-        let t = line.trimmingCharacters(in: .whitespaces)
-        guard !t.isEmpty else { return false }
-        return t.allSatisfy { $0 == "`" || $0 == "~" }
+        line.hasPrefix("```")
     }
 
-    /// Language info-string from an opening fence line (chars after the fence run).
+    /// Language info-string from an opening fence line (chars after the backticks).
     private static func fenceLanguage(_ line: String) -> String? {
-        var s = Substring(line.drop { $0 == " " || $0 == "\t" })
-        s = s.drop { $0 == "`" || $0 == "~" }
-        let lang = s.trimmingCharacters(in: .whitespaces)
+        let lang = line.drop { $0 == "`" }.trimmingCharacters(in: .whitespaces)
         return lang.isEmpty ? nil : lang
     }
 
@@ -195,16 +182,16 @@ public enum MarkdownHTMLRenderer {
             }
 
         case .link(_, _, let url, _, let children):
-            return "<a href=\"\(escapeAttr(ns.substring(with: url)))\">\(renderInlines(children, ns: ns))</a>"
+            return "<a href=\"\(escape(ns.substring(with: url)))\">\(renderInlines(children, ns: ns))</a>"
 
         case .image(_, let alt, let url, _):
-            return "<img src=\"\(escapeAttr(ns.substring(with: url)))\" alt=\"\(escapeAttr(ns.substring(with: alt)))\">"
+            return "<img src=\"\(escape(ns.substring(with: url)))\" alt=\"\(escape(ns.substring(with: alt)))\">"
 
         case .wikiLink(_, let name, _, _):
             return escape(ns.substring(with: name))
 
         case .imageEmbed(_, let target, _):
-            let t = escapeAttr(ns.substring(with: target))
+            let t = escape(ns.substring(with: target))
             return "<img src=\"\(t)\" alt=\"\(t)\">"
 
         case .strikethrough(_, _, let children):
@@ -237,6 +224,4 @@ public enum MarkdownHTMLRenderer {
         }
         return out
     }
-
-    private static func escapeAttr(_ s: String) -> String { escape(s) }
 }

@@ -21,16 +21,6 @@ extension NativeTextView {
 
         let pasteboard = NSPasteboard.general
 
-#if DEBUG
-        // TEMP diagnostics (table paste): which flavors arrive, which branch wins.
-        print("📋 PASTE types=\((pasteboard.types ?? []).map(\.rawValue))")
-        if let html = pasteboard.string(forType: .html) {
-            print("📋 PASTE html: \(html.count) chars, structural=\(Self.htmlHasBlockStructure(html)), head: \(String(html.prefix(220)))")
-        } else {
-            print("📋 PASTE no html flavor")
-        }
-#endif
-
         if let imageEmbed = onPasteImage?(pasteboard), !imageEmbed.isEmpty {
             insertBlockEmbed(imageEmbed)
             return
@@ -84,16 +74,9 @@ extension NativeTextView {
         pasteAsPlainText(sender)
     }
 
-    /// Insert pasted content as its own discrete, coalescing-fenced undo step.
-    ///
-    /// The pasted run enters via `insertText(_:replacementRange:)` — the same
-    /// entry point AppKit uses for typed characters — so without a fence the
-    /// paste leaves the typing-undo group OPEN, and an immediately following
-    /// edit (typing or deleting) coalesces INTO it. One Cmd+Z would then revert
-    /// the whole paste instead of just that edit. Bracketing the insert with
-    /// `breakUndoCoalescing()` (before, to split from preceding typing; after,
-    /// to split from following edits) and naming the action mirrors the fence
-    /// `applyInlineReplacement` / wiki-link snapback already use.
+    /// Insert pasted content as its own coalescing-fenced undo step: the paste
+    /// enters via `insertText` (the typing path), so without fences before and
+    /// after, the next edit coalesces into it and one Cmd+Z reverts both.
     private func insertPasted(_ text: String, replacementRange: NSRange) {
         breakUndoCoalescing()
         insertText(text, replacementRange: replacementRange)
