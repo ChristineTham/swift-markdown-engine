@@ -96,8 +96,21 @@ extension NativeTextView {
     /// instead of only its first line landing after the existing marker.
     private func insertPreservingBlockquote(_ text: String) {
         let sel = selectedRange()
-        let prepared = MarkdownLists.blockquoteContinuedPaste(text, at: sel.location, in: string)
+        var prepared = MarkdownLists.blockquoteContinuedPaste(text, at: sel.location, in: string)
+        // A paste ENDING in a table row would park the caret inside the table,
+        // keeping its raw pipe source on screen. Add a line break so the caret
+        // lands on a fresh line below and the table renders immediately.
+        if endsInTableRow(prepared) { prepared += "\n" }
         insertPasted(prepared, replacementRange: sel)
+    }
+
+    /// Last line looks like a `|…|` table row and no newline follows it yet.
+    private func endsInTableRow(_ text: String) -> Bool {
+        guard !text.hasSuffix("\n"),
+              let lastLine = text.split(separator: "\n", omittingEmptySubsequences: false).last
+        else { return false }
+        let t = lastLine.trimmingCharacters(in: .whitespaces)
+        return t.count >= 3 && t.hasPrefix("|") && t.hasSuffix("|")
     }
 
     private func insertBlockEmbed(_ embed: String) {
