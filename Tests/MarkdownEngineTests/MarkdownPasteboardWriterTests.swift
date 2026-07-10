@@ -28,6 +28,12 @@ struct MarkdownPasteboardWriterTests {
         #expect(roundTripped == html)   // <hr> and the checkbox survive untouched
     }
 
+    @Test("rich flavors strip checkbox inputs to plain bullets")
+    func stripCheckboxes() {
+        let body = "<ul>\n<li><input type=\"checkbox\" disabled> open</li>\n<li><input type=\"checkbox\" checked disabled> done</li>\n</ul>"
+        #expect(MarkdownPasteboardWriter.stripTaskCheckboxes(body) == "<ul>\n<li>open</li>\n<li>done</li>\n</ul>")
+    }
+
     @Test("rtf stand-in: hr becomes a 40-char rule")
     func rtfFallbackRule() {
         let rule = String(repeating: "─", count: 40)

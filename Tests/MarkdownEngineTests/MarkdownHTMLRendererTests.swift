@@ -40,10 +40,9 @@ struct MarkdownHTMLRendererTests {
         #expect(html("1. a\n2. b") == "<ol>\n<li>a</li>\n<li>b</li>\n</ol>")
     }
 
-    @Test("task list copies as plain list items (user's call: simple bullets)")
+    @Test("task list keeps GFM checkbox markup (rich flavors strip it)")
     func taskList() {
-        #expect(html("- [ ] todo\n- [x] done") == "<ul>\n<li>todo</li>\n<li>done</li>\n</ul>")
-        #expect(html("- plain\n- [ ] task") == "<ul>\n<li>plain</li>\n<li>task</li>\n</ul>")
+        #expect(html("- [ ] todo\n- [x] done") == "<ul>\n<li><input type=\"checkbox\" disabled> todo</li>\n<li><input type=\"checkbox\" checked disabled> done</li>\n</ul>")
     }
 
     @Test("thematic break becomes hr")

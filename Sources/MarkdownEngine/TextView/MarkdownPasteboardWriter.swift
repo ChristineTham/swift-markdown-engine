@@ -34,20 +34,25 @@ enum MarkdownPasteboardWriter {
 
         // Render the selection to clean HTML.
         let htmlBody = MarkdownHTMLRenderer.html(from: markdown)
+        // Rich targets (web archive + RTF) show task items as plain bullets
+        // (user's call); the .html flavor keeps the GFM checkbox markup so
+        // markdown apps (Obsidian etc.) restore `- [ ]` on paste.
+        let richBody = stripTaskCheckboxes(htmlBody)
         let fullHTML = "<html><head><meta charset=\"utf-8\"></head><body>\(htmlBody)</body></html>"
+        let richHTML = "<html><head><meta charset=\"utf-8\"></head><body>\(richBody)</body></html>"
 
         // Web archive built straight from OUR html — deriving it from
-        // NSAttributedString(html:) silently dropped <hr> and checkboxes, so
-        // WebKit-reading consumers get the real document instead.
-        if let web = webArchiveData(html: fullHTML) {
+        // NSAttributedString(html:) silently dropped <hr>, so WebKit-reading
+        // consumers get the real document instead.
+        if let web = webArchiveData(html: richHTML) {
             pasteboard.setData(web, forType: NSPasteboard.PasteboardType("com.apple.webarchive"))
         }
         pasteboard.setData(Data(fullHTML.utf8), forType: .html)
 
         // RTF for consumers without web-archive support. RTF has no horizontal
-        // rule or checkbox and the HTML importer drops both, so convert a body
-        // with visible stand-ins (─ rule, ☐/☑) on the main thread.
-        let rtfHTML = "<html><head><meta charset=\"utf-8\"></head><body>\(rtfFallbackBody(htmlBody))</body></html>"
+        // rule and the HTML importer drops it, so convert a body with a
+        // visible ─ stand-in on the main thread.
+        let rtfHTML = "<html><head><meta charset=\"utf-8\"></head><body>\(rtfFallbackBody(richBody))</body></html>"
         if let data = rtfHTML.data(using: .utf8),
            let attr = try? NSAttributedString(
                data: data,
@@ -74,6 +79,14 @@ enum MarkdownPasteboardWriter {
 
     /// The visible horizontal-rule stand-in for the RTF flavor.
     static let rtfRuleStandIn = String(repeating: "─", count: 40)
+
+    /// Rich targets show task items as plain bullets: drop the GFM checkbox
+    /// inputs the renderer emits (the .html flavor keeps them).
+    static func stripTaskCheckboxes(_ body: String) -> String {
+        body
+            .replacingOccurrences(of: "<input type=\"checkbox\" checked disabled> ", with: "")
+            .replacingOccurrences(of: "<input type=\"checkbox\" disabled> ", with: "")
+    }
 
     /// A minimal Safari-style web archive with `html` as its main resource.
     static func webArchiveData(html: String) -> Data? {

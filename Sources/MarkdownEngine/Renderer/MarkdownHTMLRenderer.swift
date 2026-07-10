@@ -110,9 +110,16 @@ public enum MarkdownHTMLRenderer {
     }
 
     private static func listItem(_ item: ListItem, ns: NSString) -> String {
-        // Task items copy as plain list items (user's call: a simple bullet
-        // reads better in rich targets than checkbox glyphs).
         let content = renderInlines(item.inlines, ns: ns)
+        if item.checkbox != nil {
+            // GFM task markup so markdown consumers (Obsidian etc.) restore
+            // `- [ ]` on paste. Rich targets get this stripped to a plain
+            // bullet by the pasteboard writer (user's call).
+            let box = item.checked
+                ? "<input type=\"checkbox\" checked disabled> "
+                : "<input type=\"checkbox\" disabled> "
+            return "<li>\(box)\(content)</li>"
+        }
         return "<li>\(content)</li>"
     }
 
