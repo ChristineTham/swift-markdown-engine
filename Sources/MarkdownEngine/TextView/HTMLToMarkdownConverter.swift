@@ -254,7 +254,11 @@ enum HTMLToMarkdownConverter {
     }
 
     private static func renderListItem(_ li: Node, ordered: Bool, number: Int, depth: Int) -> String {
-        let indent = String(repeating: "  ", count: depth)
+        // One TAB per nesting level — the editor's native indent unit (the
+        // list handler's Tab key inserts \t, and a tab renders as one full
+        // 27.5pt indent step). Two spaces would parse as a level but render
+        // only ~7pt wide, leaving pasted sublists visually barely indented.
+        let indent = String(repeating: "\t", count: depth)
 
         let marker: String
         if let box = findCheckbox(li) {

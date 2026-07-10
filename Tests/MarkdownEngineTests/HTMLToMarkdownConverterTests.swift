@@ -39,7 +39,7 @@ struct HTMLToMarkdownConverterTests {
     @Test("nested ul inside an li indents by two spaces")
     func nestedList() {
         let html = "<ul><li>Parent<ul><li>Child</li></ul></li></ul>"
-        #expect(md(html) == "- Parent\n  - Child")
+        #expect(md(html) == "- Parent\n\t- Child")
     }
 
     // MARK: - Task list
@@ -148,7 +148,7 @@ struct HTMLToMarkdownConverterTests {
     @Test("block children inside li stay in the item")
     func listItemBlocks() {
         #expect(md("<li><p>First</p><p>Second</p></li>") == "- First\n\n  Second")
-        #expect(md("<ul><li>Parent<div><ul><li>Child</li></ul></div></li></ul>") == "- Parent\n  - Child")
+        #expect(md("<ul><li>Parent<div><ul><li>Child</li></ul></div></li></ul>") == "- Parent\n\t- Child")
     }
 
     // Chromium strips the ul/ol wrapper on within-list copies (Claude/ChatGPT):
