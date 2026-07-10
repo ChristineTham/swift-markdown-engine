@@ -86,10 +86,16 @@ struct MarkdownHTMLRendererTests {
         #expect(html(md) == "<ol>\n<li>a</li>\n<li>b</li>\n</ol>")
     }
 
-    @Test("task list")
+    @Test("task list — checkbox replaces the bullet (list-style-type: none)")
     func taskList() {
         let md = "- [ ] todo\n- [x] done"
-        #expect(html(md) == "<ul>\n<li><input type=\"checkbox\" disabled> todo</li>\n<li><input type=\"checkbox\" checked disabled> done</li>\n</ul>")
+        #expect(html(md) == "<ul>\n<li style=\"list-style-type: none\"><input type=\"checkbox\" disabled> todo</li>\n<li style=\"list-style-type: none\"><input type=\"checkbox\" checked disabled> done</li>\n</ul>")
+    }
+
+    @Test("mixed list — only task items lose their marker")
+    func mixedTaskList() {
+        let md = "- plain\n- [ ] task"
+        #expect(html(md) == "<ul>\n<li>plain</li>\n<li style=\"list-style-type: none\"><input type=\"checkbox\" disabled> task</li>\n</ul>")
     }
 
     // MARK: - Blockquote

@@ -115,7 +115,13 @@ public enum MarkdownHTMLRenderer {
             let box = item.checked
                 ? "<input type=\"checkbox\" checked disabled>"
                 : "<input type=\"checkbox\" disabled>"
-            return "<li>\(box) \(content)</li>"
+            // GitHub-style task item: the checkbox REPLACES the list marker.
+            // WebKit honors list-style-type on the <li>, so web-archive/html
+            // consumers render checkbox-only items while non-task siblings
+            // keep their bullets. (The Cocoa HTML importer ignores this style
+            // and emits a bullet regardless — the RTF path rewrites task items
+            // out of list markup entirely; see rtfFallbackBody.)
+            return "<li style=\"list-style-type: none\">\(box) \(content)</li>"
         }
         return "<li>\(content)</li>"
     }
