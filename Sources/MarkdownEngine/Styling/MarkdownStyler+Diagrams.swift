@@ -16,6 +16,16 @@ extension MarkdownStyler {
 
     static func styleDiagramBlocks(_ ctx: StylingContext) -> [StyledRange] {
         var attrs: [StyledRange] = []
+        // Match the diagram to the text view's real light/dark appearance, exactly
+        // as rendered tables resolve their colors.
+        let appearance = ctx.layoutBridge?.firstTextContainer?.textView?.effectiveAppearance
+            ?? NSApp.effectiveAppearance
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let containerWidth = effectiveContainerWidth(for: ctx)
+        // Wide diagrams reuse the same scrollable-block overlay tables use; the
+        // sourceID must be stable per occurrence so scroll offsets survive restyles.
+        var occurrenceBySource: [String: Int] = [:]
+
         for (idx, token) in ctx.tokens.enumerated() where token.kind == .codeBlock {
             guard let language = fenceInfoString(of: token, in: ctx.nsText) else { continue }
 
@@ -33,13 +43,33 @@ extension MarkdownStyler {
                   let result = ctx.services.diagrams.render(
                     source: source,
                     language: language,
-                    theme: ctx.configuration.theme
+                    theme: ctx.configuration.theme,
+                    isDarkMode: isDark
                   )
             else { continue }
 
             // Suppress the code-block background so no filled box shows behind
             // the diagram — the AST styler tagged this range as code earlier.
             attrs.append((token.range, [.backgroundColor: NSColor.clear]))
+
+            let markerTexts = [
+                ctx.nsText.substring(with: token.markerRanges[0]),
+                ctx.nsText.substring(with: token.markerRanges[1])
+            ]
+            // Clamp diagrams wider than the reading column into a horizontal
+            // scroller instead of letting them overflow the text view.
+            let mode: RenderedStandaloneBlockMode
+            if result.size.width > containerWidth + 0.5 {
+                let occurrence = occurrenceBySource[source, default: 0]
+                occurrenceBySource[source] = occurrence + 1
+                mode = .collapsedSourceScrollable(
+                    markerTexts: markerTexts,
+                    displayWidth: containerWidth,
+                    sourceID: diagramSourceID(for: source, occurrence: occurrence)
+                )
+            } else {
+                mode = .collapsedSource(markerTexts: markerTexts)
+            }
 
             _ = appendRenderedStandaloneBlock(
                 for: token,
@@ -49,15 +79,22 @@ extension MarkdownStyler {
                 paragraphSpacingBefore: ctx.configuration.blockLatex.paragraphSpacingBefore,
                 paragraphSpacing: ctx.configuration.blockLatex.paragraphSpacing,
                 alignment: .center,
-                mode: .collapsedSource(markerTexts: [
-                    ctx.nsText.substring(with: token.markerRanges[0]),
-                    ctx.nsText.substring(with: token.markerRanges[1])
-                ]),
+                mode: mode,
                 ctx: ctx,
                 attrs: &attrs
             )
         }
         return attrs
+    }
+
+    /// Stable per-occurrence ID for a diagram's scrollable overlay, so its
+    /// horizontal scroll offset persists across restyles.
+    private static func diagramSourceID(for source: String, occurrence: Int) -> Int {
+        var hasher = Hasher()
+        hasher.combine("diagram-overlay-v1")
+        hasher.combine(source)
+        hasher.combine(occurrence)
+        return hasher.finalize()
     }
 
     /// The fence info string (language) of a code-block token, e.g. `"mermaid"`
