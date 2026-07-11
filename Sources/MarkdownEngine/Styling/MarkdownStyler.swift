@@ -88,6 +88,7 @@ enum MarkdownStyler {
         // NSImage rendering reuses the existing, proven machinery.
         result += styleBlockLatex(ctx)
         result += styleInlineLatex(ctx)
+        result += styleDiagramBlocks(ctx)
         result += styleImageEmbeds(ctx)
         result += styleImageLinks(ctx)
         result += styleTables(ctx)

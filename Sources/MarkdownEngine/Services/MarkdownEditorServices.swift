@@ -184,6 +184,43 @@ public struct NoOpLatexRenderer: LatexRenderer {
     public func render(latex: String, fontSize: CGFloat, theme: MarkdownEditorTheme) -> LatexRenderResult? { nil }
 }
 
+// MARK: - Diagrams
+
+/// Renders a fenced diagram code block (e.g. ```` ```mermaid ````) to an image
+/// for inline display, mirroring ``LatexRenderer`` for block math.
+///
+/// When a renderer is supplied, the engine collapses the fenced source and
+/// draws the returned image in its place — exactly as it does for block LaTeX.
+/// A caret entering the block reveals the raw source again for editing, so
+/// hosts should keep `render` cheap (cache by source) since styling reruns
+/// on edits elsewhere in the document.
+public protocol DiagramRenderer: Sendable {
+    /// Render `source` (the code inside the fence, fences excluded) written in
+    /// `language` (the fence info string, e.g. `"mermaid"`), optionally tinted
+    /// by `theme`.
+    /// - Returns: A rendered result, or `nil` if this renderer doesn't handle
+    ///   `language` or can't produce an image — the engine then leaves the
+    ///   block as an ordinary syntax-highlighted code block.
+    func render(source: String, language: String, theme: MarkdownEditorTheme) -> DiagramRenderResult?
+}
+
+/// Output of a diagram render call.
+public struct DiagramRenderResult: Sendable {
+    public let image: NSImage
+    public let size: CGSize
+
+    public init(image: NSImage, size: CGSize) {
+        self.image = image
+        self.size = size
+    }
+}
+
+/// Default renderer that draws no diagrams. Fenced blocks stay as code.
+public struct NoOpDiagramRenderer: DiagramRenderer {
+    public init() {}
+    public func render(source: String, language: String, theme: MarkdownEditorTheme) -> DiagramRenderResult? { nil }
+}
+
 // MARK: - Event Bus
 
 /// Optional notification-name bridge that lets the editor communicate with
@@ -304,6 +341,7 @@ public struct MarkdownEditorServices: Sendable {
     public var images: any EmbeddedImageProvider
     public var syntaxHighlighter: any SyntaxHighlighter
     public var latex: any LatexRenderer
+    public var diagrams: any DiagramRenderer
     public var bus: MarkdownEditorBus
 
     public init(
@@ -311,12 +349,14 @@ public struct MarkdownEditorServices: Sendable {
         images: any EmbeddedImageProvider = NoOpEmbeddedImageProvider(),
         syntaxHighlighter: any SyntaxHighlighter = PlainTextSyntaxHighlighter(),
         latex: any LatexRenderer = NoOpLatexRenderer(),
+        diagrams: any DiagramRenderer = NoOpDiagramRenderer(),
         bus: MarkdownEditorBus = .default
     ) {
         self.wikiLinks = wikiLinks
         self.images = images
         self.syntaxHighlighter = syntaxHighlighter
         self.latex = latex
+        self.diagrams = diagrams
         self.bus = bus
     }
 
