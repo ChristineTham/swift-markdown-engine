@@ -23,7 +23,7 @@ extension NativeTextView {
         let fullRange = NSRange(location: 0, length: storage.length)
         var hitRange: NSRange? = nil
         storage.enumerateAttribute(.calloutFold, in: fullRange, options: []) { value, attrRange, stop in
-            guard value is Bool else { return }
+            guard (value as? Bool) != nil else { return }
             let rect = bridge.boundingRect(forCharacterRange: attrRange, in: textContainer)
             // The chevron sits in the gutter to the LEFT of the header text; accept
             // clicks from a little before the text up to just inside it.
