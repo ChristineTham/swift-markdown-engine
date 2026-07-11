@@ -263,14 +263,12 @@ enum HTMLToMarkdownConverter {
         // spaces would parse as a level but render barely indented (~7pt).
         let indent = String(repeating: "\t", count: depth)
 
-        let marker: String
+        var marker: String
         if let box = findCheckbox(li) {
             marker = isChecked(box) ? "- [x] " : "- [ ] "
         } else {
             marker = ordered ? "\(number). " : "- "
         }
-        // Continuation lines align under the item's text (past the marker).
-        let contIndent = indent + String(repeating: " ", count: marker.count)
 
         // Walk the item's children, keeping the leading inline run as the head
         // line, block children (paragraphs, etc.) as indented continuation
@@ -313,6 +311,22 @@ enum HTMLToMarkdownConverter {
             head = blocks.removeFirst()
             headSet = true
         }
+
+        // Chat UIs (Claude) render task lists as literal "[ ] text" in plain
+        // <li>s; the text escaping turned that into "\[ \] ", which never
+        // re-renders as a checkbox. Reclaim the escaped prefix as a real
+        // task marker.
+        if findCheckbox(li) == nil, !ordered {
+            if head.hasPrefix("\\[ \\] ") {
+                marker = "- [ ] "
+                head = String(head.dropFirst(6))
+            } else if head.hasPrefix("\\[x\\] ") || head.hasPrefix("\\[X\\] ") {
+                marker = "- [x] "
+                head = String(head.dropFirst(6))
+            }
+        }
+        // Continuation lines align under the item's text (past the marker).
+        let contIndent = indent + String(repeating: " ", count: marker.count)
 
         // First line: marker + head; re-indent any embedded (hard-break) newline
         // so the continuation stays inside the item.

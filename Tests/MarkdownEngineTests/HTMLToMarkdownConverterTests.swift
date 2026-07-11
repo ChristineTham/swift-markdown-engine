@@ -50,6 +50,12 @@ struct HTMLToMarkdownConverterTests {
             + "<li><input type=\"checkbox\" checked>Done</li>"
             + "</ul>"
         #expect(md(html) == "- [ ] Todo\n- [x] Done")
+        // Chat UIs (Claude) emit task lists as literal "[ ] text" in plain
+        // <li>s; the escaped brackets must be reclaimed as a task marker.
+        #expect(md("<ul><li>[ ] Task one</li><li>[x] Done task</li></ul>")
+            == "- [ ] Task one\n- [x] Done task")
+        // …but brackets elsewhere stay escaped (no accidental checkboxes).
+        #expect(md("<ol><li>[ ] not a task</li></ol>") == "1. \\[ \\] not a task")
     }
 
     // MARK: - Messy real-world clipboard HTML
