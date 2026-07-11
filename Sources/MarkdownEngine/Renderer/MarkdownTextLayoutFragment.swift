@@ -35,6 +35,12 @@ extension NSAttributedString.Key {
     /// NSColor accent of a callout line; the fragment fills a tinted full-width
     /// band behind the line and paints a solid bar of this color in the gutter.
     static let calloutTint = NSAttributedString.Key("CalloutTint")
+    /// String SF Symbol name for a callout's header line; the fragment paints it
+    /// (in the accent color) in the gutter beside the title.
+    static let calloutIcon = NSAttributedString.Key("CalloutIcon")
+    /// Bool on a collapsible callout's header line (`true` = currently collapsed).
+    /// Makes the header's gutter clickable to toggle the fold.
+    static let calloutFold = NSAttributedString.Key("CalloutFold")
 }
 
 final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
@@ -532,7 +538,32 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
             NSBezierPath(rect: bandRect).fill()
             tint.withAlphaComponent(0.9).setFill()
             NSBezierPath(rect: CGRect(x: leftEdge, y: bandRect.minY, width: barWidth, height: tb.height)).fill()
+
+            // Header line: paint the SF Symbol in the gutter beside the title.
+            if let symbol = ts.attribute(.calloutIcon, at: docStart, effectiveRange: nil) as? String,
+               let icon = calloutIconImage(symbol, tint: tint) {
+                let side: CGFloat = 14
+                let iconRect = CGRect(
+                    x: leftEdge + barWidth + 4,
+                    y: bandRect.minY + (tb.height - side) / 2,
+                    width: side, height: side
+                )
+                icon.draw(in: iconRect)
+            }
         }
+    }
+
+    private func calloutIconImage(_ symbol: String, tint: NSColor) -> NSImage? {
+        let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+        guard let base = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) else { return nil }
+        let tinted = NSImage(size: base.size, flipped: false) { rect in
+            base.draw(in: rect)
+            tint.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        return tinted
     }
 
     // MARK: - Bullet Markers

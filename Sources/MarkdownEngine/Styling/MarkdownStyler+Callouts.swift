@@ -14,7 +14,7 @@ import Foundation
 extension MarkdownStyler {
 
     private static let calloutHeaderRegex = try! NSRegularExpression(
-        pattern: #"^(\s*)\[!([A-Za-z][\w-]*)\]"#
+        pattern: #"^(\s*)\[!([A-Za-z][\w-]*)\]([+-]?)"#
     )
 
     static func styleCallouts(_ ctx: StylingContext) -> [StyledRange] {
@@ -30,13 +30,37 @@ extension MarkdownStyler {
             let type = (content as NSString).substring(with: match.range(at: 2)).lowercased()
             let tint = calloutColor(for: type)
 
+            // Fold marker after `]`: `-` = collapsible & collapsed, `+` = collapsible
+            // & expanded, none = not collapsible.
+            let foldMarker = match.range(at: 3).length > 0
+                ? (content as NSString).substring(with: match.range(at: 3)) : ""
+            let foldable = foldMarker == "-" || foldMarker == "+"
+            let calloutRange = NSRange(location: first.range.location,
+                                       length: NSMaxRange(group.last!.range) - first.range.location)
+            let caretInside = NSLocationInRange(ctx.caretLocation, calloutRange)
+                || ctx.caretLocation == NSMaxRange(calloutRange)
+            let collapsed = foldMarker == "-" && !caretInside
+
             // Tinted band + accent bar per line; suppress the grey quote bar.
-            for line in group {
-                attrs.append((line.range, [.calloutTint: tint]))
-                attrs.append((line.range, [.blockquoteLevel: 0]))
+            // When collapsed, only the header line keeps the band; body lines hide.
+            for (i, line) in group.enumerated() {
+                if collapsed && i > 0 {
+                    hideLine(line.range, ctx: ctx, into: &attrs)
+                } else {
+                    attrs.append((line.range, [.calloutTint: tint]))
+                    attrs.append((line.range, [.blockquoteLevel: 0]))
+                }
+            }
+            // Header line carries the SF Symbol the fragment paints in the gutter —
+            // a chevron for collapsible callouts, else the type icon. A `.calloutFold`
+            // flag makes the header's gutter clickable to toggle.
+            let icon = foldable ? (collapsed ? "chevron.right" : "chevron.down") : calloutIcon(for: type)
+            attrs.append((NSRange(location: first.range.location, length: 1), [.calloutIcon: icon]))
+            if foldable {
+                attrs.append((first.range, [.calloutFold: collapsed]))
             }
 
-            // Title line: bold + accent, and hide the `[!` … `]` punctuation.
+            // Title line: bold + accent, and hide the `[!` … `]±` punctuation.
             let contentLoc = first.contentRange.location
             let headerContentRange = NSRange(location: contentLoc + wsLen,
                                              length: first.contentRange.length - wsLen)
@@ -45,10 +69,29 @@ extension MarkdownStyler {
 
             hide(NSRange(location: contentLoc + wsLen, length: 2), ctx: ctx, into: &attrs)       // "[!"
             let typeRange = match.range(at: 2)
-            let closeBracket = NSRange(location: contentLoc + typeRange.location + typeRange.length, length: 1) // "]"
+            // Hide `]` plus any fold marker (`+`/`-`).
+            let closeLen = 1 + match.range(at: 3).length
+            let closeBracket = NSRange(location: contentLoc + typeRange.location + typeRange.length, length: closeLen)
             hide(closeBracket, ctx: ctx, into: &attrs)
         }
         return attrs
+    }
+
+    /// Collapse a callout body line to an invisible 1pt sliver (same trick as
+    /// front-matter hiding).
+    private static func hideLine(_ range: NSRange, ctx: StylingContext, into attrs: inout [StyledRange]) {
+        let collapsed = NSMutableParagraphStyle()
+        collapsed.minimumLineHeight = 1
+        collapsed.maximumLineHeight = 1
+        collapsed.lineSpacing = 0
+        collapsed.paragraphSpacing = 0
+        collapsed.paragraphSpacingBefore = 0
+        var paraAttrs: [StyledRange] = []
+        ctx.nsText.enumerateSubstrings(in: range, options: .byParagraphs) { _, _, enclosing, _ in
+            paraAttrs.append((enclosing, [.paragraphStyle: collapsed]))
+        }
+        attrs.append(contentsOf: paraAttrs)
+        attrs.append((range, [.foregroundColor: NSColor.clear, .font: ctx.latexMarkerFont, .spellingState: 0]))
     }
 
     private static func boldFont(_ font: NSFont) -> NSFont {
@@ -102,6 +145,24 @@ extension MarkdownStyler {
         case "quote", "cite": return .systemGray
         case "question", "help", "faq": return .systemTeal
         default: return .systemBlue   // note, info, todo, abstract, …
+        }
+    }
+
+    /// SF Symbol name drawn in the callout header's gutter.
+    private static func calloutIcon(for type: String) -> String {
+        switch type {
+        case "tip", "hint": return "flame"
+        case "success", "check", "done": return "checkmark.circle"
+        case "warning", "caution", "attention": return "exclamationmark.triangle"
+        case "failure", "fail", "danger", "error", "missing": return "xmark.circle"
+        case "bug": return "ladybug"
+        case "example": return "list.bullet"
+        case "quote", "cite": return "quote.opening"
+        case "question", "help", "faq": return "questionmark.circle"
+        case "todo": return "checklist"
+        case "summary", "abstract", "tldr": return "text.append"
+        case "important": return "exclamationmark.circle"
+        default: return "pencil.circle"   // note, info, …
         }
     }
 }
