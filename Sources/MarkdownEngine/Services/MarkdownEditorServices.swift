@@ -192,11 +192,12 @@ public struct NoOpLatexRenderer: LatexRenderer {
 public protocol DiagramRenderer: Sendable {
     /// Render `source` (the code inside the fence, fences excluded) written in
     /// `language` (the fence info string, e.g. `"mermaid"`), optionally tinted
-    /// by `theme`.
+    /// by `theme`. `isDarkMode` reflects the editor's current effective
+    /// appearance so the renderer can match light/dark.
     /// - Returns: A rendered result, or `nil` if this renderer doesn't handle
     ///   `language` or can't produce an image — the engine then leaves the
     ///   block as an ordinary syntax-highlighted code block.
-    func render(source: String, language: String, theme: MarkdownEditorTheme) -> DiagramRenderResult?
+    func render(source: String, language: String, theme: MarkdownEditorTheme, isDarkMode: Bool) -> DiagramRenderResult?
 }
 
 /// Output of a diagram render call.
@@ -213,7 +214,7 @@ public struct DiagramRenderResult: Sendable {
 /// Default renderer that draws no diagrams. Fenced blocks stay as code.
 public struct NoOpDiagramRenderer: DiagramRenderer {
     public init() {}
-    public func render(source: String, language: String, theme: MarkdownEditorTheme) -> DiagramRenderResult? { nil }
+    public func render(source: String, language: String, theme: MarkdownEditorTheme, isDarkMode: Bool) -> DiagramRenderResult? { nil }
 }
 
 // MARK: - Event Bus
