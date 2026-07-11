@@ -58,14 +58,16 @@ extension MarkdownStyler {
             ]
             // Clamp diagrams wider than the reading column into a horizontal
             // scroller instead of letting them overflow the text view.
+            let occurrenceKey = "\(language)\n\(source)"
+            let occurrence = occurrenceBySource[occurrenceKey, default: 0]
+            occurrenceBySource[occurrenceKey] = occurrence + 1
+
             let mode: RenderedStandaloneBlockMode
             if result.size.width > containerWidth + 0.5 {
-                let occurrence = occurrenceBySource[source, default: 0]
-                occurrenceBySource[source] = occurrence + 1
                 mode = .collapsedSourceScrollable(
                     markerTexts: markerTexts,
                     displayWidth: containerWidth,
-                    sourceID: diagramSourceID(for: source, occurrence: occurrence)
+                    sourceID: diagramSourceID(for: occurrenceKey, occurrence: occurrence)
                 )
             } else {
                 mode = .collapsedSource(markerTexts: markerTexts)
