@@ -251,7 +251,7 @@ extension NativeTextViewCoordinator {
 
         let replacementDisplay: String
         let linkID: String?
-        if request.isImageEmbedMode {
+        if request.isImageEmbedMode || request.isLiteralMode {
             replacementDisplay = request.storageFragment
             linkID = nil
         } else {
@@ -260,7 +260,9 @@ extension NativeTextViewCoordinator {
             linkID = replacementInfo.id
         }
 
-        let undoActionName = request.isImageEmbedMode ? "Insert Image Embed" : "Insert Link"
+        let undoActionName = request.isImageEmbedMode
+            ? "Insert Image Embed"
+            : (request.isLiteralMode ? "Insert Tag" : "Insert Link")
         textView.breakUndoCoalescing()
 
         isProgrammaticEdit = true
@@ -284,10 +286,12 @@ extension NativeTextViewCoordinator {
         textView.undoManager?.setActionName(undoActionName)
         textView.breakUndoCoalescing()
 
-        let caretRange = WikiLinkService.caretRangeAfterReplacing(
-            displayRange: range,
-            with: request.storageFragment
-        )
+        let caretRange = request.isLiteralMode
+            ? NSRange(location: range.location + (replacementDisplay as NSString).length, length: 0)
+            : WikiLinkService.caretRangeAfterReplacing(
+                displayRange: range,
+                with: request.storageFragment
+            )
         let documentLength = (textView.string as NSString).length
         let clampedCaret = NSRange(location: min(max(caretRange.location, 0), documentLength), length: 0)
 
