@@ -23,6 +23,7 @@ extension MarkdownStyler {
         let tokens: [MarkdownToken]
         let codeTokens: [MarkdownToken]
         let activeTokenIndices: Set<Int>
+        let caretLocation: Int
         let baseFont: NSFont
         let layoutBridge: LayoutBridge?
         let baseDefaultLineHeight: CGFloat
@@ -68,6 +69,7 @@ enum MarkdownStyler {
             tokens: tokens,
             codeTokens: codeTokens,
             activeTokenIndices: activeTokenIndices,
+            caretLocation: caretLocation,
             baseFont: baseFont,
             layoutBridge: layoutBridge,
             baseDefaultLineHeight: baseDefaultLineHeight,
@@ -88,6 +90,9 @@ enum MarkdownStyler {
         // NSImage rendering reuses the existing, proven machinery.
         result += styleBlockLatex(ctx)
         result += styleInlineLatex(ctx)
+        result += styleFrontMatter(ctx)
+        result += styleComments(ctx)
+        result += styleCallouts(ctx)
         result += styleImageEmbeds(ctx)
         result += styleImageLinks(ctx)
         result += styleTables(ctx)
