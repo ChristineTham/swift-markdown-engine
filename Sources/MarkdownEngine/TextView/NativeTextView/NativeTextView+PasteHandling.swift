@@ -39,6 +39,13 @@ extension NativeTextView {
             return
         }
 
+        // App-provided smart paste (rich text → Markdown, URL → link, …). Runs
+        // before the default plain-text paste; `nil` falls through.
+        if let smart = onSmartPaste?(pasteboard), !smart.isEmpty {
+            insertPreservingBlockquote(smart)
+            return
+        }
+
         if let pasted = plain {
             let sanitized = sanitizePastedText(pasted)
             if !sanitized.isEmpty {

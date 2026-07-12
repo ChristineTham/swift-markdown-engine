@@ -76,6 +76,12 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
     /// to the system's default plain-text paste.
     public var onPasteImage: ((NSPasteboard) -> String?)?
 
+    /// Optional general smart-paste hook, consulted after image and HTML-table
+    /// handling but before the default plain-text paste. Return Markdown to
+    /// insert at the caret (e.g. rich text converted to Markdown, or a URL
+    /// turned into a link), or `nil` to fall through to the default paste.
+    public var onSmartPaste: ((NSPasteboard) -> String?)?
+
     /// Fires when the user clicks a `[[Name]]` link. The argument is the
     /// resolved opaque identifier (or the display name when no resolver
     /// was supplied).
@@ -135,6 +141,7 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         documentId: String = "default",
         isEditable: Bool = true,
         onPasteImage: ((NSPasteboard) -> String?)? = nil,
+        onSmartPaste: ((NSPasteboard) -> String?)? = nil,
         onLinkClick: ((String) -> Void)? = nil,
         onCaretRectChange: ((CGRect) -> Void)? = nil,
         onBuildContextMenu: ((NSMenu, NSRange) -> NSMenu)? = nil,
@@ -157,6 +164,7 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         self.documentId = documentId
         self.isEditable = isEditable
         self.onPasteImage = onPasteImage
+        self.onSmartPaste = onSmartPaste
         self.onLinkClick = onLinkClick
         self.onCaretRectChange = onCaretRectChange
         self.onBuildContextMenu = onBuildContextMenu
@@ -266,6 +274,7 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         textView.isAutomaticDataDetectionEnabled = true
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.onPasteImage = onPasteImage
+        textView.onSmartPaste = onSmartPaste
         if #available(macOS 15.1, *) {
             textView.writingToolsBehavior = .complete
         }
@@ -416,6 +425,7 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         }
 
         textView.onPasteImage = onPasteImage
+        textView.onSmartPaste = onSmartPaste
         textView.isCursorExcluded = isCursorExcluded
         textView.setPlaceholder(placeholder)
         // Sync heightBehavior across all three layers (scroll view, text view,
